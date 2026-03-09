@@ -770,18 +770,22 @@ function renderDay(){
           ${isDone?'<span style="color:var(--green);font-size:0.8rem;">✓</span>':''}
           ${isNewPR?'<span class="badge bl" style="font-size:0.62rem;">🏆 PR</span>':''}
         </h3>
-        <div class="exmeta">${ex.group} · ${cfg.sets} series · registrás la última</div>
+        <div class="exmeta">${ex.group} · ${cfg.sets} series${cfg.repsMin?` · ${cfg.repsMin===cfg.repsMax?cfg.repsMin+' reps':cfg.repsMin+'-'+cfg.repsMax+' reps'}`:''}</div>
         <div class="expr">${pr?`PR: ${pr.kg}kg × ${pr.reps} reps`:'Sin PR aún'}</div>
         ${ent?`<div class="lastlog has">Última serie: <b>${ent.lastKg}kg</b> × <b>${ent.lastReps}</b> reps</div>`:''}
       </div>
       <div class="exacts">
-        <div class="setspill"><div class="v">${cfg.sets}</div><div class="l">series</div></div>
+        <div class="setspill">
+          <div class="v">${cfg.sets}</div>
+          <div class="l">series</div>
+          ${cfg.repsMin?`<div style="font-size:0.58rem;color:var(--text2);margin-top:1px;">${cfg.repsMin===cfg.repsMax?cfg.repsMin:cfg.repsMin+'-'+cfg.repsMax} reps</div>`:''}
+        </div>
         <button class="btn btn-lime btn-sm" onclick="toggleLP('${exId}',${di})">${isDone?'✏ Editar':'+ Registrar'}</button>
       </div>
     </div>
     <div class="logpanel" id="lp_${exId}">
       <div style="font-size:0.78rem;color:var(--text2);margin-bottom:10px;">
-        Ingresá los datos de tu <strong>última serie</strong> (serie ${cfg.sets}/${cfg.sets}) de <strong>${ex.name}</strong>
+        Ingresá los datos de tu <strong>última serie</strong> de <strong>${ex.name}</strong>${cfg.repsMin?(' · objetivo: <strong>'+(cfg.repsMin===cfg.repsMax?cfg.repsMin:(cfg.repsMin+'-'+cfg.repsMax))+' reps</strong>'):''}
       </div>
       <div class="lpinner">
         <div class="field" style="margin:0;"><label>Peso (kg)</label>
@@ -959,7 +963,7 @@ function openAssign(di){
           <span style="font-size:0.7rem;color:var(--text2);">${ex.group}</span>
         </label>`).join('')}
     </div>
-    <div style="margin-top:14px;font-size:0.7rem;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Series por ejercicio</div>
+    <div style="margin-top:14px;font-size:0.7rem;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Configurar series y repeticiones</div>
     <div id="sclist"></div>`;
 
   const update=()=>{
@@ -967,9 +971,22 @@ function openAssign(di){
     document.getElementById('sclist').innerHTML=checked.length?checked.map(cb=>{
       const ex=db.exercises.find(e=>e.id===cb.value);
       const cs=cfgMap[cb.value]?.sets||3;
-      return `<div class="scfgrow">
-        <span style="font-size:0.85rem;">${ex?.name}</span>
-        <input type="number" min="1" max="20" value="${cs}" id="sc_${cb.value}">
+      const crMin=cfgMap[cb.value]?.repsMin||8;
+      const crMax=cfgMap[cb.value]?.repsMax||12;
+      return `<div class="scfgrow" style="grid-template-columns:2fr repeat(3,1fr);">
+        <span style="font-size:0.85rem;font-weight:500;">${ex?.name}</span>
+        <div style="text-align:center;">
+          <div style="font-size:0.6rem;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Series</div>
+          <input type="number" min="1" max="20" value="${cs}" id="sc_${cb.value}" style="text-align:center;">
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:0.6rem;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Reps mín</div>
+          <input type="number" min="1" max="100" value="${crMin}" id="srmin_${cb.value}" style="text-align:center;">
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:0.6rem;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Reps máx</div>
+          <input type="number" min="1" max="100" value="${crMax}" id="srmax_${cb.value}" style="text-align:center;">
+        </div>
       </div>`;
     }).join(''):`<div style="color:var(--text2);font-size:0.82rem;padding:8px 0;">Seleccioná ejercicios arriba</div>`;
   };
@@ -980,7 +997,14 @@ function openAssign(di){
     const checked=[...document.querySelectorAll('#esl input:checked')].map(cb=>cb.value);
     db.dayEx[di]=checked;
     const cfg={};
-    checked.forEach(id=>{const inp=document.getElementById(`sc_${id}`);cfg[id]={sets:inp?parseInt(inp.value)||3:3};});
+    checked.forEach(id=>{
+      const inpS=document.getElementById(`sc_${id}`);
+      const inpMin=document.getElementById(`srmin_${id}`);
+      const inpMax=document.getElementById(`srmax_${id}`);
+      const rMin=inpMin?parseInt(inpMin.value)||1:1;
+      const rMax=inpMax?parseInt(inpMax.value)||rMin:rMin;
+      cfg[id]={sets:inpS?parseInt(inpS.value)||3:3,repsMin:Math.min(rMin,rMax),repsMax:Math.max(rMin,rMax)};
+    });
     db.dayEx[`c${di}`]=cfg;
     save();closeModal();renderRDList();showToast('✓ Ejercicios guardados');
   };

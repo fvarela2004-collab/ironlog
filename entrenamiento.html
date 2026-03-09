@@ -350,6 +350,27 @@ tr:hover td{background:rgba(198,241,53,0.015);}
 .mnav-btn.on{color:var(--lime);}
 .mnav-btn.on .mlbl{color:var(--lime);}
 
+/* DRAG & DROP */
+.exsellist{user-select:none;}
+.exselitem{position:relative;}
+.exselitem.dragging{opacity:0.4;border:1px dashed var(--lime);}
+.exselitem.drag-over{border-color:var(--lime);background:var(--lime-dim);}
+.drag-handle{cursor:grab;color:var(--muted);font-size:1rem;padding:0 4px;flex-shrink:0;}
+.drag-handle:active{cursor:grabbing;}
+
+/* ORDER LIST (day view reorder) */
+.order-list{display:flex;flex-direction:column;gap:6px;}
+.order-item{
+  display:flex;align-items:center;gap:10px;
+  background:var(--s2);border:1px solid var(--border);
+  border-radius:9px;padding:10px 13px;
+  cursor:grab;transition:all 0.15s;
+}
+.order-item:active{cursor:grabbing;}
+.order-item.dragging{opacity:0.35;border:1px dashed var(--lime);}
+.order-item.drag-over{border-color:var(--lime);background:var(--lime-dim);transform:scale(1.01);}
+.order-num{font-family:'Barlow Condensed',sans-serif;font-size:1.1rem;font-weight:700;color:var(--lime);width:20px;text-align:center;flex-shrink:0;}
+
 /* RESPONSIVE */
 /* ── TABLET ── */
 @media(max-width:1024px){
@@ -949,62 +970,116 @@ function renderRDList(){
 
 function openAssign(di){
   const r=db.routine[di]||{name:DAYS[di]};
-  const assigned=db.dayEx[di]||[];
-  const cfgMap=db.dayEx[`c${di}`]||{};
+  let ordered=[...(db.dayEx[di]||[])];
+  const cfgMap={...(db.dayEx[`c${di}`]||{})};
+
+  function renderModal(){
+    const unassigned=db.exercises.filter(ex=>!ordered.includes(ex.id));
+    let html=`<p style="font-size:0.78rem;color:var(--text2);margin-bottom:12px;">Agregá y ordená ejercicios con las flechas ↑↓.</p>`;
+
+    if(ordered.length){
+      html+=`<div style="font-size:0.66rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Ejercicios del día</div>
+      <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px;">`;
+      ordered.forEach((id,idx)=>{
+        const ex=db.exercises.find(e=>e.id===id);
+        if(!ex)return;
+        const cfg2=cfgMap[id]||{sets:3,repsMin:8,repsMax:12};
+        html+=`<div style="background:var(--s2);border:1px solid rgba(198,241,53,0.2);border-radius:10px;padding:10px 12px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.9rem;font-weight:700;color:var(--lime);min-width:20px;">${idx+1}.</span>
+            <span style="flex:1;font-size:0.88rem;font-weight:600;">${ex.name}</span>
+            <span style="font-size:0.7rem;color:var(--text2);">${ex.group}</span>
+            <button onclick="window._moveEx('${id}',-1)" ${idx===0?'disabled':''} style="background:var(--s3);border:1px solid var(--border);color:${idx===0?'var(--muted)':'var(--text2)'};border-radius:5px;width:26px;height:26px;cursor:${idx===0?'default':'pointer'};font-size:0.75rem;display:flex;align-items:center;justify-content:center;">↑</button>
+            <button onclick="window._moveEx('${id}',1)" ${idx===ordered.length-1?'disabled':''} style="background:var(--s3);border:1px solid var(--border);color:${idx===ordered.length-1?'var(--muted)':'var(--text2)'};border-radius:5px;width:26px;height:26px;cursor:${idx===ordered.length-1?'default':'pointer'};font-size:0.75rem;display:flex;align-items:center;justify-content:center;">↓</button>
+            <button onclick="window._removeEx('${id}')" style="background:none;border:1px solid rgba(255,79,79,0.3);color:var(--red);border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:0.8rem;display:flex;align-items:center;justify-content:center;">✕</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">
+            <div>
+              <div style="font-size:0.6rem;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Series</div>
+              <input type="number" min="1" max="20" value="${cfg2.sets}" id="sc_${id}" style="text-align:center;padding:5px;font-size:0.84rem;">
+            </div>
+            <div>
+              <div style="font-size:0.6rem;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Reps mín</div>
+              <input type="number" min="1" max="100" value="${cfg2.repsMin||8}" id="srmin_${id}" style="text-align:center;padding:5px;font-size:0.84rem;">
+            </div>
+            <div>
+              <div style="font-size:0.6rem;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Reps máx</div>
+              <input type="number" min="1" max="100" value="${cfg2.repsMax||12}" id="srmax_${id}" style="text-align:center;padding:5px;font-size:0.84rem;">
+            </div>
+          </div>
+        </div>`;
+      });
+      html+=`</div>`;
+    } else {
+      html+=`<div style="color:var(--text2);font-size:0.82rem;padding:8px 0 12px;">Agregá ejercicios de la lista de abajo.</div>`;
+    }
+
+    if(unassigned.length){
+      html+=`<div style="font-size:0.66rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">+ Agregar ejercicio</div>
+      <div style="display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto;">`;
+      unassigned.forEach(ex=>{
+        html+=`<div style="display:flex;align-items:center;gap:8px;background:var(--s2);border:1px solid var(--border);padding:8px 12px;border-radius:9px;">
+          <span style="flex:1;font-size:0.85rem;">${ex.name} <span style="font-size:0.7rem;color:var(--text2);">${ex.group}</span></span>
+          <button onclick="window._addEx('${ex.id}')" class="btn btn-lime btn-xs">+ Agregar</button>
+        </div>`;
+      });
+      html+=`</div>`;
+    }
+
+    document.getElementById('mbody').innerHTML=html;
+  }
+
+  window._moveEx=(id,dir)=>{
+    const idx=ordered.indexOf(id);if(idx<0)return;
+    const ni=idx+dir;if(ni<0||ni>=ordered.length)return;
+    // Save current input values before re-render
+    ordered.forEach(eid=>{
+      const s=document.getElementById(`sc_${eid}`);
+      const mn=document.getElementById(`srmin_${eid}`);
+      const mx=document.getElementById(`srmax_${eid}`);
+      if(s)cfgMap[eid]={...cfgMap[eid],sets:parseInt(s.value)||3,repsMin:parseInt(mn?.value)||8,repsMax:parseInt(mx?.value)||12};
+    });
+    ordered.splice(idx,1);ordered.splice(ni,0,id);
+    renderModal();
+  };
+
+  window._removeEx=(id)=>{
+    ordered.forEach(eid=>{
+      const s=document.getElementById(`sc_${eid}`);
+      const mn=document.getElementById(`srmin_${eid}`);
+      const mx=document.getElementById(`srmax_${eid}`);
+      if(s)cfgMap[eid]={...cfgMap[eid],sets:parseInt(s.value)||3,repsMin:parseInt(mn?.value)||8,repsMax:parseInt(mx?.value)||12};
+    });
+    ordered=ordered.filter(x=>x!==id);
+    renderModal();
+  };
+
+  window._addEx=(id)=>{
+    ordered.forEach(eid=>{
+      const s=document.getElementById(`sc_${eid}`);
+      const mn=document.getElementById(`srmin_${eid}`);
+      const mx=document.getElementById(`srmax_${eid}`);
+      if(s)cfgMap[eid]={...cfgMap[eid],sets:parseInt(s.value)||3,repsMin:parseInt(mn?.value)||8,repsMax:parseInt(mx?.value)||12};
+    });
+    if(!ordered.includes(id))ordered.push(id);
+    if(!cfgMap[id])cfgMap[id]={sets:3,repsMin:8,repsMax:12};
+    renderModal();
+  };
 
   document.getElementById('mtitle').textContent=`EJERCICIOS — ${(r.name||DAYS[di]).toUpperCase()}`;
-  document.getElementById('mbody').innerHTML=`
-    <p style="font-size:0.8rem;color:var(--text2);margin-bottom:12px;">Seleccioná los ejercicios y cuántas series hacés de cada uno.</p>
-    <div class="exsellist" id="esl">
-      ${db.exercises.map(ex=>`
-        <label class="exselitem">
-          <input type="checkbox" value="${ex.id}" ${assigned.includes(ex.id)?'checked':''}>
-          <span style="flex:1;font-size:0.86rem;font-weight:500;">${ex.name}</span>
-          <span style="font-size:0.7rem;color:var(--text2);">${ex.group}</span>
-        </label>`).join('')}
-    </div>
-    <div style="margin-top:14px;font-size:0.7rem;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Configurar series y repeticiones</div>
-    <div id="sclist"></div>`;
-
-  const update=()=>{
-    const checked=[...document.querySelectorAll('#esl input:checked')];
-    document.getElementById('sclist').innerHTML=checked.length?checked.map(cb=>{
-      const ex=db.exercises.find(e=>e.id===cb.value);
-      const cs=cfgMap[cb.value]?.sets||3;
-      const crMin=cfgMap[cb.value]?.repsMin||8;
-      const crMax=cfgMap[cb.value]?.repsMax||12;
-      return `<div class="scfgrow" style="grid-template-columns:2fr repeat(3,1fr);">
-        <span style="font-size:0.85rem;font-weight:500;">${ex?.name}</span>
-        <div style="text-align:center;">
-          <div style="font-size:0.6rem;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Series</div>
-          <input type="number" min="1" max="20" value="${cs}" id="sc_${cb.value}" style="text-align:center;">
-        </div>
-        <div style="text-align:center;">
-          <div style="font-size:0.6rem;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Reps mín</div>
-          <input type="number" min="1" max="100" value="${crMin}" id="srmin_${cb.value}" style="text-align:center;">
-        </div>
-        <div style="text-align:center;">
-          <div style="font-size:0.6rem;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Reps máx</div>
-          <input type="number" min="1" max="100" value="${crMax}" id="srmax_${cb.value}" style="text-align:center;">
-        </div>
-      </div>`;
-    }).join(''):`<div style="color:var(--text2);font-size:0.82rem;padding:8px 0;">Seleccioná ejercicios arriba</div>`;
-  };
-  document.querySelectorAll('#esl input').forEach(cb=>cb.addEventListener('change',update));
-  update();
+  renderModal();
 
   window._modalOk=()=>{
-    const checked=[...document.querySelectorAll('#esl input:checked')].map(cb=>cb.value);
-    db.dayEx[di]=checked;
     const cfg={};
-    checked.forEach(id=>{
+    ordered.forEach(id=>{
       const inpS=document.getElementById(`sc_${id}`);
       const inpMin=document.getElementById(`srmin_${id}`);
       const inpMax=document.getElementById(`srmax_${id}`);
-      const rMin=inpMin?parseInt(inpMin.value)||1:1;
-      const rMax=inpMax?parseInt(inpMax.value)||rMin:rMin;
-      cfg[id]={sets:inpS?parseInt(inpS.value)||3:3,repsMin:Math.min(rMin,rMax),repsMax:Math.max(rMin,rMax)};
+      const rMin=inpMin?parseInt(inpMin.value)||1:cfgMap[id]?.repsMin||8;
+      const rMax=inpMax?parseInt(inpMax.value)||rMin:cfgMap[id]?.repsMax||12;
+      cfg[id]={sets:inpS?parseInt(inpS.value)||3:cfgMap[id]?.sets||3,repsMin:Math.min(rMin,rMax),repsMax:Math.max(rMin,rMax)};
     });
+    db.dayEx[di]=[...ordered];
     db.dayEx[`c${di}`]=cfg;
     save();closeModal();renderRDList();showToast('✓ Ejercicios guardados');
   };

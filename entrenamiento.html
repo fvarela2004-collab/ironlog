@@ -457,6 +457,9 @@ function saveLog(exId,di){
   const idx=db.logs[lk].findIndex(e=>e.exId===exId);
   if(idx>=0)db.logs[lk][idx]=ent;else db.logs[lk].push(ent);
   save();renderStrip();renderDay();
+  // Panel se cierra solo al rerenderizar, pero por si acaso
+  const lp=document.getElementById(`lp_${exId}`);
+  if(lp)lp.classList.remove('open');
   showToast('✓ Guardado');
 }
 

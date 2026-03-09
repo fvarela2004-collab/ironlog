@@ -3,10 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#070809" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f1f5f9" media="(prefers-color-scheme: light)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="IRONLOG">
 <title>IRONLOG</title>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="https://accounts.google.com/gsi/client" async></script>
+<!-- Preconnect to speed up resource loading -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdnjs.cloudflare.com">
+<!-- Fonts: only load weights we actually use, display=swap prevents render blocking -->
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Syne:wght@500;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<!-- Chart.js loaded async, app renders immediately without it -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 /* ── DARK MODE (default) ── */
 :root{
@@ -406,6 +417,40 @@ tr:hover td{background:rgba(198,241,53,0.015);}
 
 <canvas id="confetti-canvas"></canvas>
 
+<script>
+// ── SERVICE WORKER REGISTRATION (cache for offline + instant load) ──
+if('serviceWorker' in navigator){
+  const swCode = `
+const CACHE='ironlog-v1';
+const ASSETS=[
+  'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
+  'https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Syne:wght@500;600;700&family=JetBrains+Mono:wght@400&display=swap',
+];
+self.addEventListener('install',e=>{
+  e.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS).catch(()=>{})));
+  self.skipWaiting();
+});
+self.addEventListener('activate',e=>{
+  e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));
+  self.clients.claim();
+});
+self.addEventListener('fetch',e=>{
+  // Cache-first for CDN assets, network-first for everything else
+  if(e.request.url.includes('cdnjs.cloudflare.com')||e.request.url.includes('fonts.g')){
+    e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{
+      const clone=res.clone();
+      caches.open(CACHE).then(c=>c.put(e.request,clone));
+      return res;
+    })));
+  }
+});
+`;
+  const blob=new Blob([swCode],{type:'application/javascript'});
+  const url=URL.createObjectURL(blob);
+  navigator.serviceWorker.register(url).catch(()=>{});
+}
+</script>
+
 <header>
   <div class="logo">IRONLOG <em>WORKOUT TRACKER</em></div>
   <div class="header-right">
@@ -555,6 +600,12 @@ tr:hover td{background:rgba(198,241,53,0.015);}
 </div>
 
 <script>
+// Format volume: shows kg with k abbreviation if >= 1000
+function fmtVol(v){
+  if(v>=1000)return (v/1000).toFixed(1).replace(/\.0$/,'')+'k kg';
+  return v.toFixed(0)+' kg';
+}
+
 const DAYS=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
 const DS=['LUN','MAR','MIÉ','JUE','VIE','SÁB','DOM'];
 
@@ -819,7 +870,7 @@ function showCompleteModal(di,lk,mon){
   document.getElementById('completeSubtitle').textContent=`${r.name||DAYS[di]} — ¡Excelente trabajo!`;
   document.getElementById('completeStats').innerHTML=`
     <div class="cs-item"><div class="cv">${sets}</div><div class="cl">Series totales</div></div>
-    <div class="cs-item"><div class="cv">${vol.toFixed(0)}</div><div class="cl">Volumen kg</div></div>
+    <div class="cs-item"><div class="cv">${fmtVol(vol)}</div><div class="cl">Volumen</div></div>
     <div class="cs-item"><div class="cv">${logs.filter(e=>e.done).length}</div><div class="cl">Ejercicios</div></div>
     <div class="cs-item"><div class="cv">${prs}</div><div class="cl">PRs nuevos</div></div>
   `;
@@ -970,7 +1021,7 @@ function renderGStats(){
   document.getElementById('gstats').innerHTML=[
     {v:sessions,l:'Sesiones'},
     {v:sets,l:'Series totales'},
-    {v:(vol/1000).toFixed(1)+'T',l:'Volumen'},
+    {v:fmtVol(vol),l:'Volumen'},
     {v:prc,l:'Con PR'},
   ].map(s=>`<div class="scard"><div class="v">${s.v}</div><div class="l">${s.l}</div></div>`).join('');
 }
@@ -1076,7 +1127,7 @@ function renderWT(){
     return `<tr>
       <td><strong>${DS[di]}</strong> <span style="color:var(--text2);font-size:0.7rem;">${dates[di].toLocaleDateString('es-AR',{day:'numeric',month:'short'})}</span></td>
       <td>${r.name||day}</td>
-      <td style="font-family:'JetBrains Mono',monospace;">${vol>0?vol.toFixed(0)+' kg':'—'}</td>
+      <td style="font-family:'JetBrains Mono',monospace;">${vol>0?fmtVol(vol):'—'}</td>
       <td style="min-width:100px;"><div style="display:flex;align-items:center;gap:6px;">
         <div style="flex:1;background:var(--s3);border-radius:3px;height:4px;overflow:hidden;">
           <div style="width:${pct}%;height:100%;background:${bc};border-radius:3px;transition:width 0.6s;"></div>
